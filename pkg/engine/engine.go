@@ -12,7 +12,7 @@ import (
 // Engine is the main runtime engine
 type Engine struct {
 	workflow *dsl.WorkflowDefinition
-	memory   *GlobalMemory
+	memory   Memory
 	nodes    map[string]Node
 	outputs  map[string]map[string]interface{} // node_id -> outputs
 	mu       sync.RWMutex
@@ -34,6 +34,11 @@ func (e *Engine) GetOutputs() map[string]map[string]interface{} {
 	defer e.mu.RUnlock()
 	// Return a copy to be safe? For MVP just return the map, caller shouldn't modify.
 	return e.outputs
+}
+
+// SetMemory sets the memory instance for the engine
+func (e *Engine) SetMemory(m Memory) {
+	e.memory = m
 }
 
 // RegisterNode registers a node implementation
@@ -147,74 +152,6 @@ func (e *Engine) Run(ctx context.Context, initialInputs map[string]interface{}) 
 								readyCh <- neighbor
 							}
 						} else {
-							// Branch not taken.
-							// In a full implementation, we should propagate "SKIP" to the neighbor.
-							// For this MVP, if we don't decrement inDegree, the neighbor will never run.
-							// This effectively "skips" it, BUT if the neighbor has other parents that ARE taken,
-							// it will wait forever.
-							// FIX: We must decrement inDegree but NOT add to readyCh?
-							// No, if we decrement, it might run when other parents finish.
-							// If we want to SKIP, we need to mark it as skipped and propagate.
-							//
-							// Simplified Logic for MVP:
-							// We assume IfElse nodes are the ONLY parents of their branches in the simple examples.
-							// So if we don't trigger it, it won't run.
-							// However, to avoid "hanging" the workflow (waiting for all nodes),
-							// we should probably count it as "completed" or "skipped".
-							//
-							// Let's implement a basic "Skip" propagation:
-							// If we don't take the branch, we treat the target as "Skipped".
-							// We decrement inDegree. If inDegree becomes 0, we check if ANY parent was "Taken".
-							// If NO parent was taken (all skipped), then this node is Skipped.
-							//
-							// FOR MVP HACK:
-							// Just decrement inDegree. If it hits 0, check if we should run it.
-							// How do we know if we should run it?
-							// We need to track if the edge was "activated".
-							//
-							// Let's refine:
-							// We decrement inDegree regardless.
-							// But we only add to readyCh if the edge was "activated".
-							// Wait, if a node has 2 parents, one activates it, one doesn't.
-							// It should run.
-							// So, we need to track "activation count" or similar?
-							//
-							// Simpler approach for MVP:
-							// If selectedBranch != edgeHandle, we effectively "skip" this edge.
-							// But we MUST decrement inDegree so the graph doesn't stall.
-							// But if we decrement inDegree and it hits 0, we put it in readyCh?
-							// If we put it in readyCh, it runs. We don't want it to run if it was supposed to be skipped.
-							//
-							// Let's assume strict branching for MVP:
-							// If an edge is NOT taken, we treat the target node as "Skipped" immediately if it depends solely on this edge.
-							//
-							// Let's go with the "Decrement but don't run if skipped" approach requires state.
-							//
-							// ALTERNATIVE:
-							// If selectedBranch != edgeHandle:
-							//   We still decrement inDegree.
-							//   If inDegree == 0:
-							//     We check if we should run.
-							//     How? We look at the inputs?
-							//     Or we just run it, and the node itself checks if it has valid inputs?
-							//
-							// Let's try the simplest valid thing:
-							// If edge matches, we process normally.
-							// If edge does NOT match, we treat it as "Skipped".
-							// We need to propagate this skip.
-							//
-							// Recursive Skip:
-							// func skipNode(nodeID) {
-							//   mark node as skipped
-							//   completedNodes++
-							//   for neighbor in adj[nodeID]:
-							//     inDegree[neighbor]--
-							//     if inDegree[neighbor] == 0:
-							//       skipNode(neighbor)
-							// }
-							//
-							// This seems correct for a DAG.
-
 							e.skipNode(neighbor, adj, inDegree, &completedNodes, &wg)
 						}
 					}

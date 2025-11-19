@@ -35,6 +35,8 @@ func (n *CodeNode) Execute(ctx *engine.NodeContext) (map[string]interface{}, err
 	// Dify usually expects a 'main' function.
 	// For MVP, let's assume the code is just a script that returns an object.
 
+	print(n.Code)
+
 	val, err := vm.RunString(n.Code)
 	if err != nil {
 		return nil, fmt.Errorf("code execution failed: %w", err)

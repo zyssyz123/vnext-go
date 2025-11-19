@@ -7,7 +7,7 @@ import (
 // NodeContext provides context for node execution
 type NodeContext struct {
 	Ctx    context.Context
-	Memory *GlobalMemory
+	Memory Memory
 	Inputs map[string]interface{}
 	NodeID string
 	Engine *Engine // Reference to the executing engine

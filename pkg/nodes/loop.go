@@ -99,36 +99,22 @@ func (n *LoopNode) Execute(ctx *engine.NodeContext) (map[string]interface{}, err
 			// If we want to share stateful nodes, we might need to copy.
 			// But CreateNode creates NEW instances, which is correct for Loop (isolation).
 
-			// Inject Loop Item into Memory
-			inputs := map[string]interface{}{
-				"loop_item": val,
-			}
+			// Inject Loop Item into Memory using Child Scope
+			childMem := ctx.Memory.NewChild()
+			childMem.Set("loop_item", val)
+
+			// Set child memory scope to sub-engine
+			subEngine.SetMemory(childMem)
 
 			// Run Sub-Workflow
-			// We use a new context or the same one? Same one allows cancellation.
-			if err := subEngine.Run(ctx.Ctx, inputs); err != nil {
+			// We pass empty inputs because we already populated the memory scope.
+			if err := subEngine.Run(ctx.Ctx, nil); err != nil {
 				errCh <- fmt.Errorf("iteration %d failed: %w", index, err)
 				return
 			}
 
 			// Collect Results
-			// We need to define WHAT to collect.
-			// Usually LoopNode config specifies which output to collect?
-			// Or we collect the entire memory?
-			// For MVP, let's assume the sub-workflow has an "End" node or we just collect all outputs?
-			// Let's collect the output of the LAST node or a specific "output" variable in memory?
-			// Let's assume the sub-workflow writes to a memory variable "result" or we capture the "End" node output?
-			// Dify usually has an "End" node.
-			// Let's check if we can get the "End" node output.
-			// Engine stores outputs in `e.outputs`. But it's private.
-			// We should expose GetOutputs() or similar.
-
-			// Let's add GetOutputs() to Engine.
 			outputs := subEngine.GetOutputs()
-
-			// Find the "End" node or just take all outputs?
-			// Let's look for a node with type "End" or just return the whole map?
-			// Returning the whole map of outputs for this iteration is safest.
 			results[index] = outputs
 		}(i, item)
 	}
