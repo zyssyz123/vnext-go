@@ -1,6 +1,6 @@
 # Dify vNext (Go)
 
-**Dify vNext** is a high-performance, concurrent workflow engine written in Go. It is designed as a next-generation runtime for LLM-based applications, addressing the performance and architectural limitations of the original Python-based Dify engine.
+**Dify vNext** is a high-performance, concurrent workflow engine written in Go designed for building LLM-based applications and AI agents.
 
 ## 🚀 Key Features
 
@@ -11,70 +11,78 @@
 
 ## 🏗️ Architecture
 
-```mermaid
-graph TB
-    subgraph "Workflow Definition"
-        YAML[YAML Workflow File]
-    end
-    
-    subgraph "DSL Layer"
-        Parser[DSL Parser]
-        WorkflowDef[WorkflowDefinition]
-    end
-    
-    subgraph "Core Engine"
-        Engine[Engine Runtime]
-        Memory[Hierarchical Memory]
-        Checkpointer[Checkpointer Interface]
-        
-        subgraph "Memory Scopes"
-            RootScope[Root Scope]
-            ChildScope1[Child Scope 1]
-            ChildScope2[Child Scope 2]
-            RootScope -.parent.-> ChildScope1
-            RootScope -.parent.-> ChildScope2
-        end
-    end
-    
-    subgraph "Node Implementations"
-        StartNode[Start Node]
-        LLMNode[LLM Node]
-        CodeNode[Code Node]
-        LoopNode[Loop Node]
-        IfElseNode[IfElse Node]
-        ToolNode[Tool Node]
-        AnswerNode[Answer Node]
-    end
-    
-    subgraph "State Persistence"
-        InMemoryCP[InMemoryCheckpointer]
-        FutureCP[Redis/Postgres<br/>Checkpointer]
-    end
-    
-    YAML --> Parser
-    Parser --> WorkflowDef
-    WorkflowDef --> Engine
-    
-    Engine --> Memory
-    Engine --> Checkpointer
-    Engine -.executes.-> StartNode
-    Engine -.executes.-> LLMNode
-    Engine -.executes.-> CodeNode
-    Engine -.executes.-> LoopNode
-    Engine -.executes.-> IfElseNode
-    Engine -.executes.-> ToolNode
-    Engine -.executes.-> AnswerNode
-    
-    Checkpointer -.implements.-> InMemoryCP
-    Checkpointer -.future.-> FutureCP
-    
-    LoopNode -.creates.-> ChildScope1
-    LoopNode -.creates.-> ChildScope2
-    
-    style Engine fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
-    style Memory fill:#50C878,stroke:#2E7D4E,stroke-width:2px,color:#fff
-    style Checkpointer fill:#F39C12,stroke:#C87F0A,stroke-width:2px,color:#fff
 ```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           DIFY VNEXT ENGINE                                │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │                      WORKFLOW DEFINITION                          │    │
+│  │                                                                    │    │
+│  │    ┌──────────────┐           ┌──────────────────────────┐       │    │
+│  │    │  YAML File   │──parse──► │  DSL Parser              │       │    │
+│  │    │              │           │  (WorkflowDefinition)    │       │    │
+│  │    └──────────────┘           └────────────┬─────────────┘       │    │
+│  └─────────────────────────────────────────────┼─────────────────────┘    │
+│                                                │                           │
+│  ┌─────────────────────────────────────────────▼─────────────────────┐    │
+│  │                      CORE RUNTIME ENGINE                          │    │
+│  │                                                                    │    │
+│  │    ┌──────────────────────────────────────────────────────┐      │    │
+│  │    │  Engine                                              │      │    │
+│  │    │  - Goroutine-based execution                         │      │    │
+│  │    │  - DAG dependency resolution                         │      │    │
+│  │    │  - Concurrent node execution                         │      │    │
+│  │    └────────┬────────────────────┬──────────────────┬─────┘      │    │
+│  │             │                    │                  │            │    │
+│  │             ▼                    ▼                  ▼            │    │
+│  │    ┌────────────────┐   ┌────────────────┐  ┌────────────────┐ │    │
+│  │    │ HIERARCHICAL   │   │  CHECKPOINTER  │  │  NODE REGISTRY │ │    │
+│  │    │    MEMORY      │   │   INTERFACE    │  │                │ │    │
+│  │    │                │   │                │  │  - StartNode   │ │    │
+│  │    │  ┌──────────┐  │   │ ┌────────────┐ │  │  - LLMNode    │ │    │
+│  │    │  │Root Scope│  │   │ │InMemoryCP  │ │  │  - CodeNode   │ │    │
+│  │    │  └────┬─────┘  │   │ └────────────┘ │  │  - LoopNode   │ │    │
+│  │    │       │        │   │ ┌────────────┐ │  │  - IfElseNode │ │    │
+│  │    │  ┌────▼────┐   │   │ │Redis/PG CP │ │  │  - ToolNode   │ │    │
+│  │    │  │Child    │   │   │ │  (Future)  │ │  │  - AnswerNode │ │    │
+│  │    │  │Scope 1  │   │   │ └────────────┘ │  └────────────────┘ │    │
+│  │    │  └─────────┘   │   │                │                     │    │
+│  │    │  ┌─────────┐   │   │  Snapshots:    │                     │    │
+│  │    │  │Child    │   │   │  thread_id ->  │                     │    │
+│  │    │  │Scope 2  │   │   │  state_map     │                     │    │
+│  │    │  └─────────┘   │   └────────────────┘                     │    │
+│  │    │                │                                           │    │
+│  │    │  Variables:    │                                           │    │
+│  │    │  - Bubble-up   │                                           │    │
+│  │    │  - Isolated    │                                           │    │
+│  │    │  - Thread-safe │                                           │    │
+│  │    └────────────────┘                                           │    │
+│  └───────────────────────────────────────────────────────────────┘     │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────┐     │
+│  │                    EXECUTION FLOW                             │     │
+│  │                                                                │     │
+│  │   Step 1        Step 2         Step 3         Step N          │     │
+│  │   ┌─────┐      ┌─────┐       ┌─────┐        ┌─────┐          │     │
+│  │   │Start│──►   │Node │───►   │Node │ ─────► │ End │          │     │
+│  │   └─────┘      │  A  │       │  B  │        └─────┘          │     │
+│  │                └─────┘       └─────┘                          │     │
+│  │                   │              │                             │     │
+│  │                   ▼              ▼                             │     │
+│  │            ┌──────────────┬──────────────┐                    │     │
+│  │            │  Checkpoint  │  Checkpoint  │                    │     │
+│  │            │   (State 1)  │   (State 2)  │                    │     │
+│  │            └──────────────┴──────────────┘                    │     │
+│  └───────────────────────────────────────────────────────────────┘     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Principles
+
+- **Goroutine-Native**: Each node can spawn thousands of lightweight concurrent tasks
+- **Scoped Memory**: Child scopes inherit from parent, preventing variable pollution
+- **Snapshot State**: Every node execution triggers a state checkpoint
+- **DAG Execution**: Topological sort with concurrent branch execution
 
 ## 📂 Project Structure
 
@@ -133,15 +141,16 @@ The project comes with several example workflows to demonstrate its capabilities
 ## 🧠 Architecture Highlights
 
 ### Memory Management
-Unlike Dify's flat variable pool, vNext uses **Hierarchical Scoping**.
+vNext implements a **Hierarchical Scoping** system for memory management.
 - **Global Scope**: Inputs to the `Start` node.
 - **Child Scope**: Created for each `Loop` iteration.
 - **Bubble-Up Lookup**: Variables are looked up in the current scope, then the parent, up to the root.
+- **Isolation**: Ensures parallel branches and iterations don't interfere with each other.
 
 ### Checkpointing
 The engine integrates a `Checkpointer` that saves the state of the entire memory tree after each node execution.
 - **Current Implementation**: `InMemoryCheckpointer` (for MVP/Testing).
-- **Future**: Redis/Postgres implementations for persistent state.
+- **Future**: Redis/Postgres implementations for persistent state and time-travel debugging.
 
 ## 🤝 Contributing
 Contributions are welcome! Please check the `pkg/nodes` directory to see how to implement new node types.
