@@ -1,0 +1,49 @@
+name: "Parallel Loop Workflow"
+version: "2.0"
+
+memory:
+  schema:
+    topics: list
+
+nodes:
+  - id: "start"
+    type: "Start"
+    outputs:
+      topics: "list"
+
+  - id: "process_list"
+    type: "Loop"
+    inputs:
+      list: "{{ start.topics }}"
+    config:
+      sub_workflow:
+        nodes:
+          - id: "sub_llm"
+            type: "LLM"
+            config:
+              model: "gpt-3.5-turbo"
+            inputs:
+              prompt: "Write a one-sentence slogan for: {{ memory.loop_item }}"
+          
+          - id: "sub_code"
+            type: "Code"
+            config:
+              code: |
+                "SLOGAN: " + input.toUpperCase();
+            inputs:
+              input: "{{ sub_llm.response }}"
+        edges:
+          - source: "sub_llm"
+            target: "sub_code"
+
+  - id: "final_answer"
+    type: "Answer"
+    inputs:
+      answer: "Generated Slogans: {{ process_list.results }}"
+
+edges:
+  - source: "start"
+    target: "process_list"
+
+  - source: "process_list"
+    target: "final_answer"

@@ -1,0 +1,90 @@
+name: "Deep Research Assistant"
+version: "2.0"
+
+nodes:
+  - id: "start"
+    type: "Start"
+    outputs:
+      topic: "string"
+
+  - id: "planner"
+    type: "LLM"
+    config:
+      model: "gpt-4o"
+    inputs:
+      prompt: |
+        You are a research planning assistant.
+        Break down the topic '{{ start.topic }}' into 3 distinct, specific research questions.
+        Return ONLY a raw JSON array of strings. Do not use Markdown code blocks.
+        Example: ["What is X?", "How does Y work?", "Future of Z"]
+
+  - id: "parser"
+    type: "Code"
+    config:
+      code: |
+        // Parse the JSON output from LLM
+        var raw = input.trim();
+        // Remove markdown code blocks if present (just in case)
+        raw = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+        var questions = JSON.parse(raw);
+        questions;
+    inputs:
+      input: "{{ planner.response }}"
+
+  - id: "research_loop"
+    type: "Loop"
+    inputs:
+      list: "{{ parser.result }}"
+    config:
+      sub_workflow:
+        nodes:
+          - id: "search"
+            type: "Tool"
+            config:
+              provider_id: "google"
+              tool_id: "google_search"
+            inputs:
+              query: "{{ memory.loop_item }}"
+
+          - id: "summarize"
+            type: "LLM"
+            config:
+              model: "gpt-3.5-turbo"
+            inputs:
+              prompt: |
+                Summarize the following search results for the question '{{ memory.loop_item }}':
+                {{ search.text }}
+                Keep it concise (max 2 sentences).
+        edges:
+          - source: "search"
+            target: "summarize"
+
+  - id: "writer"
+    type: "LLM"
+    config:
+      model: "gpt-4o"
+    inputs:
+      prompt: |
+        You are a professional report writer.
+        Write a comprehensive summary report on '{{ start.topic }}' based on the following research findings:
+        
+        {{ research_loop.results }}
+        
+        Structure the report with a clear introduction, body paragraphs for each finding, and a conclusion.
+
+  - id: "final_answer"
+    type: "Answer"
+    inputs:
+      answer: "{{ writer.response }}"
+
+edges:
+  - source: "start"
+    target: "planner"
+  - source: "planner"
+    target: "parser"
+  - source: "parser"
+    target: "research_loop"
+  - source: "research_loop"
+    target: "writer"
+  - source: "writer"
+    target: "final_answer"

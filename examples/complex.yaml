@@ -1,0 +1,104 @@
+name: "Complex Demo Workflow"
+version: "2.0"
+
+memory:
+  schema:
+    user_query: string
+
+nodes:
+  - id: "start"
+    type: "Start"
+    outputs:
+      query: "string"
+
+  - id: "check_intent"
+    type: "IfElse"
+    config:
+      variable: "{{ start.query }}"
+      operator: "contains"
+      value: "search"
+    inputs:
+      input: "{{ start.query }}"
+
+  - id: "google_search"
+    type: "Tool"
+    config:
+      provider_id: "google"
+      tool_id: "google_search"
+    inputs:
+      query: "{{ start.query }}"
+
+  - id: "calculator_tool"
+    type: "Tool"
+    config:
+      provider_id: "math"
+      tool_id: "calculator"
+    inputs:
+      expression: "100 * 20 + 5"
+
+
+
+  - id: "summarize_search"
+    type: "LLM"
+    config:
+      model: "gpt-4o"
+    inputs:
+      prompt: "Summarize these search results: {{ google_search.text }}"
+
+  - id: "format_output"
+    type: "Code"
+    config:
+      code: |
+        var res = input;
+        if (res.length > 100) {
+            res = res.substring(0, 100) + "...";
+        }
+        res = "FINAL ANSWER: " + res;
+        res;
+    inputs:
+      input: "{{ summarize_search.response }}"
+
+  - id: "answer_node"
+    type: "Answer"
+    inputs:
+      answer: "{{ format_output.result }}"
+
+  - id: "answer_direct"
+    type: "Answer"
+    inputs:
+      answer: "Calculation Result: {{ calculator_tool.text }}"
+
+edges:
+  - source: "start"
+    target: "check_intent"
+  
+  # Branch 1: Search (True)
+  - source: "check_intent"
+    target: "google_search"
+    source_handle: "true"
+  
+  - source: "google_search"
+    target: "summarize_search"
+
+  - source: "summarize_search"
+    target: "format_output"
+
+  - source: "format_output"
+    target: "answer_node"
+
+  # Branch 2: Direct Answer (False) -> Calculator Demo
+  - source: "check_intent"
+    target: "calculator_tool"
+    source_handle: "false"
+    
+  # Note: direct_answer doesn't go to format_output in this simple DAG example 
+  # because format_output expects input from summarize_search.
+  # In a real graph we'd merge them, but for this test let's just end direct_answer separately 
+  # or make format_output optional?
+  # For simplicity, let's make direct_answer also go to answer_node but answer_node needs to handle variable inputs?
+  # Our simple MVP resolver doesn't handle "OR" inputs.
+  # So let's just terminate direct_answer with a separate Answer node or just leave it as leaf.
+  # Let's add another Answer node for direct path.
+  
+  - source: "calculator_tool"
+    target: "answer_direct"

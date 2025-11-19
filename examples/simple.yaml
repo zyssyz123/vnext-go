@@ -1,0 +1,35 @@
+name: "Hackathon Demo Workflow"
+version: "2.0"
+
+memory:
+  schema:
+    user_query: string
+    llm_history: list<message>
+    final_answer: string
+
+nodes:
+  - id: "start_node"
+    type: "Start"
+    outputs:
+      query: "string"
+
+  - id: "process_llm"
+    type: "LLM"
+    config:
+      model: "gpt-4o"
+      temperature: 0.7
+    inputs:
+      prompt: "{{ start_node.query }}"
+    outputs:
+      response: "string"
+
+  - id: "end_node"
+    type: "End"
+    inputs:
+      result: "{{ process_llm.response }}"
+
+edges:
+  - source: "start_node"
+    target: "process_llm"
+  - source: "process_llm"
+    target: "end_node"
