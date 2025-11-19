@@ -1,0 +1,69 @@
+name: Multi-language Translator
+description: Translates text into multiple languages using a Loop.
+nodes:
+  - id: start
+    type: Start
+    inputs:
+      text: "Hello, welcome to the future of workflow automation!"
+      target_languages: ["Spanish", "French", "Japanese", "Chinese", "German"]
+
+  - id: translation_loop
+    type: Loop
+    inputs:
+      list: "{{ memory.target_languages }}"
+    config:
+      sub_workflow:
+        name: Single Translation
+        nodes:
+          - id: translate
+            type: LLM
+            inputs:
+              prompt: |
+                Translate the following text to {{ memory.loop_item }}:
+                "{{ memory.text }}"
+                Return ONLY the translated text.
+        edges: [] # Single node, no edges needed inside
+
+  - id: format_results
+    type: Code
+    inputs:
+      original: "{{ memory.text }}"
+      translations: "{{ translation_loop.results }}"
+      code: |
+        var res = "Original: " + input.original + "\n\nTranslations:\n";
+        // input.translations is an array of maps, where each map contains the outputs of the sub-workflow nodes.
+        // Since our sub-workflow has one node 'translate', we expect: [{ "translate": { "response": "..." } }, ...]
+        
+        // Note: In our LoopNode implementation, we collect 'outputs' of the sub-engine.
+        // The sub-engine outputs are map[node_id]map[key]value.
+        
+        for (var i = 0; i < input.translations.length; i++) {
+           var item = input.translations[i];
+           // item is map[string]map[string]interface{}
+           // We need to access item["translate"]["response"]
+           
+           // In Goja, accessing nested maps might need care if they are Go maps.
+           // But usually they are converted to JS objects.
+           
+           var trans = "N/A";
+           if (item && item.translate && item.translate.response) {
+             trans = item.translate.response;
+           }
+           res += "- " + trans + "\n";
+        }
+        res;
+
+  - id: final_output
+    type: Answer
+    inputs:
+      answer: "{{ format_results.result }}"
+
+edges:
+  - source: start
+    target: translation_loop
+  
+  - source: translation_loop
+    target: format_results
+  
+  - source: format_results
+    target: final_output

@@ -19,7 +19,7 @@ type NodeDefinition struct {
 	ID      string                 `yaml:"id"`
 	Type    string                 `yaml:"type"`
 	Config  map[string]interface{} `yaml:"config"`
-	Inputs  map[string]string      `yaml:"inputs"` // Key: InputName, Value: Template/Reference
+	Inputs  map[string]interface{} `yaml:"inputs"` // Key: InputName, Value: Template/Reference/Complex
 	Outputs map[string]string      `yaml:"outputs"`
 }
 

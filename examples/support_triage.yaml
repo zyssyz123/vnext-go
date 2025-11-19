@@ -1,0 +1,111 @@
+name: Customer Support Triage
+description: Automatically classifies customer tickets and routes them to the appropriate department.
+nodes:
+  - id: start
+    type: Start
+    inputs:
+      ticket_content: "My credit card was charged twice for the subscription."
+
+  - id: classify_intent
+    type: LLM
+    inputs:
+      prompt: |
+        Classify the following customer ticket into one of these categories: 'Billing', 'Technical', 'General'.
+        Ticket: {{ memory.ticket_content }}
+        Return ONLY the category name.
+
+  - id: check_billing
+    type: IfElse
+    inputs:
+      input: "{{ classify_intent.response }}"
+      operator: contains
+      value: "Billing"
+      cases:
+        - case_id: "true"
+          label: "Is Billing"
+        - case_id: "false"
+          label: "Not Billing"
+
+  - id: handle_billing
+    type: LLM
+    inputs:
+      prompt: |
+        You are a Billing Support Specialist.
+        Draft a polite response to the customer regarding their billing issue:
+        "{{ memory.ticket_content }}"
+        Ask for the transaction ID and last 4 digits of the card.
+
+  - id: check_technical
+    type: IfElse
+    inputs:
+      input: "{{ classify_intent.response }}"
+      operator: contains
+      value: "Technical"
+      cases:
+        - case_id: "true"
+          label: "Is Technical"
+        - case_id: "false"
+          label: "Not Technical"
+
+  - id: handle_technical
+    type: LLM
+    inputs:
+      prompt: |
+        You are a Technical Support Engineer.
+        Draft a troubleshooting guide for the customer's issue:
+        "{{ memory.ticket_content }}"
+        Ask for logs and reproduction steps.
+
+  - id: handle_general
+    type: LLM
+    inputs:
+      prompt: |
+        You are a General Support Agent.
+        Draft a helpful response to the customer's inquiry:
+        "{{ memory.ticket_content }}"
+        Provide general FAQ links.
+
+  - id: final_response
+    type: Answer
+    inputs:
+      answer: |
+        Category: {{ classify_intent.response }}
+        
+        Response:
+        {{ handle_billing.response }}{{ handle_technical.response }}{{ handle_general.response }}
+
+edges:
+  - source: start
+    target: classify_intent
+  
+  - source: classify_intent
+    target: check_billing
+
+  # Billing Path
+  - source: check_billing
+    target: handle_billing
+    source_handle: "true"
+  
+  - source: handle_billing
+    target: final_response
+
+  # Not Billing -> Check Technical
+  - source: check_billing
+    target: check_technical
+    source_handle: "false"
+
+  # Technical Path
+  - source: check_technical
+    target: handle_technical
+    source_handle: "true"
+
+  - source: handle_technical
+    target: final_response
+
+  # Not Technical -> General Path
+  - source: check_technical
+    target: handle_general
+    source_handle: "false"
+
+  - source: handle_general
+    target: final_response

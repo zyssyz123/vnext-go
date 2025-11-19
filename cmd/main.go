@@ -12,39 +12,49 @@ import (
 )
 
 func main() {
-	dslFile := flag.String("f", "examples/simple.yaml", "Path to DSL file")
+	workflowFile := flag.String("f", "examples/simple.yaml", "Path to workflow YAML file")
 	flag.Parse()
 
-	// 1. Parse DSL
-	fmt.Printf("Parsing DSL file: %s\n", *dslFile)
-	workflow, err := dsl.Parse(*dslFile)
+	// 1. Load Workflow Definition
+	wf, err := dsl.Parse(*workflowFile)
 	if err != nil {
-		log.Fatalf("Failed to parse DSL: %v", err)
+		log.Fatalf("Failed to parse workflow: %v", err)
 	}
-	fmt.Printf("Workflow loaded: %s (Version: %s)\n", workflow.Name, workflow.Version)
+
+	fmt.Printf("Loaded workflow: %s\n", wf.Name)
 
 	// 2. Initialize Engine
-	eng := engine.NewEngine(workflow)
+	eng := engine.NewEngine(wf)
 
-	// 3. Register Nodes (Dynamic based on Workflow)
-	for _, nodeDef := range workflow.Nodes {
-		n := nodes.CreateNode(nodeDef)
-		if n != nil {
-			eng.RegisterNode(n)
+	// Initialize Checkpointer
+	cp := engine.NewInMemoryCheckpointer()
+	eng.SetCheckpointer(cp)
+
+	// 3. Register Nodes
+	// In a real app, this would be dynamic or plugin-based
+	// For MVP, we manually register known node types
+	// We need to create instances based on the definition
+	for _, nodeDef := range wf.Nodes {
+		nodeInstance := nodes.CreateNode(nodeDef)
+		if nodeInstance != nil {
+			eng.RegisterNode(nodeInstance)
+		} else {
+			log.Printf("Warning: Unknown node type '%s' for node '%s'", nodeDef.Type, nodeDef.ID)
 		}
 	}
 
-	// 4. Run Workflow
-	ctx := context.Background()
-	initialInputs := map[string]interface{}{
-		"query":  "Please search for the capital of France",
-		"topics": []string{"Go Lang", "AI Agents", "Future Tech"},
-		"topic":  "The Future of Quantum Computing",
+	// 4. Prepare Initial Inputs
+	// For MVP, we can hardcode or parse from CLI args
+	inputs := map[string]interface{}{
+		"topic": "Go Lang", // For research.yaml
+		"query": "Go Lang", // For simple.yaml
 	}
 
-	fmt.Println("Starting workflow execution...")
-	if err := eng.Run(ctx, initialInputs); err != nil {
+	// 5. Run Workflow
+	ctx := context.Background()
+	if err := eng.Run(ctx, inputs); err != nil {
 		log.Fatalf("Workflow execution failed: %v", err)
 	}
+
 	fmt.Println("Workflow execution completed successfully.")
 }

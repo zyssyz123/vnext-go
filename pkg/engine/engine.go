@@ -11,11 +11,12 @@ import (
 
 // Engine is the main runtime engine
 type Engine struct {
-	workflow *dsl.WorkflowDefinition
-	memory   Memory
-	nodes    map[string]Node
-	outputs  map[string]map[string]interface{} // node_id -> outputs
-	mu       sync.RWMutex
+	workflow     *dsl.WorkflowDefinition
+	memory       Memory
+	nodes        map[string]Node
+	outputs      map[string]map[string]interface{} // node_id -> outputs
+	checkpointer Checkpointer
+	mu           sync.RWMutex
 }
 
 // NewEngine creates a new engine instance
@@ -39,6 +40,11 @@ func (e *Engine) GetOutputs() map[string]map[string]interface{} {
 // SetMemory sets the memory instance for the engine
 func (e *Engine) SetMemory(m Memory) {
 	e.memory = m
+}
+
+// SetCheckpointer sets the checkpointer for the engine
+func (e *Engine) SetCheckpointer(cp Checkpointer) {
+	e.checkpointer = cp
 }
 
 // RegisterNode registers a node implementation
@@ -177,6 +183,8 @@ func (e *Engine) Run(ctx context.Context, initialInputs map[string]interface{}) 
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -227,10 +235,51 @@ func (e *Engine) executeNode(ctx context.Context, nodeID string) error {
 	e.outputs[nodeID] = outputs
 	e.mu.Unlock()
 
+	// Checkpoint state
+	if e.checkpointer != nil {
+		// For MVP, we use "default" thread ID. In real app, this comes from context or input.
+		// We save the entire memory state.
+		if err := e.checkpointer.Save("default_thread", e.memory.GetAll()); err != nil {
+			fmt.Printf("Warning: failed to save checkpoint: %v\n", err)
+		}
+	}
+
 	return nil
 }
 
-func (e *Engine) resolveValue(template string) (interface{}, error) {
+func (e *Engine) resolveValue(val interface{}) (interface{}, error) {
+	switch v := val.(type) {
+	case string:
+		return e.resolveStringTemplate(v)
+	case []interface{}:
+		// Recursively resolve list items
+		resolvedList := make([]interface{}, len(v))
+		for i, item := range v {
+			res, err := e.resolveValue(item)
+			if err != nil {
+				return nil, err
+			}
+			resolvedList[i] = res
+		}
+		return resolvedList, nil
+	case map[string]interface{}:
+		// Recursively resolve map values
+		resolvedMap := make(map[string]interface{})
+		for k, item := range v {
+			res, err := e.resolveValue(item)
+			if err != nil {
+				return nil, err
+			}
+			resolvedMap[k] = res
+		}
+		return resolvedMap, nil
+	default:
+		// Return as is for other types (int, bool, etc.)
+		return v, nil
+	}
+}
+
+func (e *Engine) resolveStringTemplate(template string) (interface{}, error) {
 	// Check if it's a pure template "{{ key }}" -> return raw value (could be map/list)
 	trimmed := strings.TrimSpace(template)
 	if strings.HasPrefix(trimmed, "{{") && strings.HasSuffix(trimmed, "}}") {
@@ -269,7 +318,13 @@ func (e *Engine) resolveValue(template string) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		sb.WriteString(fmt.Sprintf("%v", val))
+
+		// Handle nil value (e.g. skipped node output)
+		if val == nil {
+			// Write nothing for nil
+		} else {
+			sb.WriteString(fmt.Sprintf("%v", val))
+		}
 
 		start = close
 	}
@@ -298,10 +353,29 @@ func (e *Engine) resolveKey(key string) (interface{}, error) {
 		e.mu.RUnlock()
 
 		if !ok {
+			// Node not found in outputs.
+			// Check if node exists in workflow definition
+			nodeExists := false
+			for _, n := range e.workflow.Nodes {
+				if n.ID == nodeID {
+					nodeExists = true
+					break
+				}
+			}
+			if nodeExists {
+				// Node exists but has no output -> Skipped or not run yet.
+				// Since we are executing a dependent node, it must have been skipped.
+				// Return nil to indicate "no value"
+				return nil, nil
+			}
+
 			return nil, fmt.Errorf("node outputs not found: %s", nodeID)
 		}
 		val, ok := nodeOutputs[outputKey]
 		if !ok {
+			// Output key not found. Could be a bug in node implementation or optional output.
+			// For now, return error to be strict, or nil?
+			// Let's return error for missing key in EXISTING outputs.
 			return nil, fmt.Errorf("output key %s not found in node %s", outputKey, nodeID)
 		}
 		return val, nil

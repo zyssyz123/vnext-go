@@ -1,0 +1,74 @@
+name: Automated Code Review
+description: Analyzes code for security, style, and performance issues.
+nodes:
+  - id: start
+    type: Start
+    inputs:
+      code_snippet: |
+        function login(user, password) {
+          var sql = "SELECT * FROM users WHERE user = '" + user + "' AND password = '" + password + "'";
+          db.execute(sql);
+        }
+
+  - id: security_check
+    type: LLM
+    inputs:
+      prompt: |
+        Analyze the following code for SECURITY vulnerabilities (e.g., SQL Injection, XSS).
+        Code:
+        {{ memory.code_snippet }}
+        Return a brief report.
+
+  - id: style_check
+    type: LLM
+    inputs:
+      prompt: |
+        Analyze the following code for STYLE and BEST PRACTICES (e.g., variable naming, formatting).
+        Code:
+        {{ memory.code_snippet }}
+        Return a brief report.
+
+  - id: performance_check
+    type: LLM
+    inputs:
+      prompt: |
+        Analyze the following code for PERFORMANCE bottlenecks.
+        Code:
+        {{ memory.code_snippet }}
+        Return a brief report.
+
+  - id: aggregate_report
+    type: Code
+    inputs:
+      security: "{{ security_check.response }}"
+      style: "{{ style_check.response }}"
+      performance: "{{ performance_check.response }}"
+      code: |
+        var report = "# Code Review Report\n\n";
+        report += "## Security\n" + input.security + "\n\n";
+        report += "## Style\n" + input.style + "\n\n";
+        report += "## Performance\n" + input.performance + "\n";
+        report;
+
+  - id: final_output
+    type: Answer
+    inputs:
+      answer: "{{ aggregate_report.result }}"
+
+edges:
+  - source: start
+    target: security_check
+  - source: start
+    target: style_check
+  - source: start
+    target: performance_check
+  
+  - source: security_check
+    target: aggregate_report
+  - source: style_check
+    target: aggregate_report
+  - source: performance_check
+    target: aggregate_report
+  
+  - source: aggregate_report
+    target: final_output

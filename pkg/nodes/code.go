@@ -26,18 +26,39 @@ func (n *CodeNode) Execute(ctx *engine.NodeContext) (map[string]interface{}, err
 	vm := goja.New()
 
 	// Inject inputs into JS context
+	// Dify Python injects inputs as a dictionary named 'input' (or similar, let's check docs/code if needed)
+	// But for our examples, we used 'input.security', so we MUST inject 'input' as a map.
+	// Also, we previously injected them as globals. Let's do BOTH for backward compatibility/flexibility.
+
+	vm.Set("input", ctx.Inputs)
+
 	for k, v := range ctx.Inputs {
 		vm.Set(k, v)
 	}
 
+	// Determine code to run
+	// 1. Use code from Config (n.Code)
+	// 2. If empty, check if "code" is provided in Inputs (dynamic code)
+	codeToRun := n.Code
+	if codeToRun == "" {
+		if val, ok := ctx.Inputs["code"]; ok {
+			if s, ok := val.(string); ok {
+				codeToRun = s
+			}
+		}
+	}
+
+	if codeToRun == "" {
+		return nil, fmt.Errorf("no code provided for CodeNode %s", n.ID())
+	}
+
 	// Execute code
 	// We assume the code sets a variable 'output' or returns a value.
-	// Dify usually expects a 'main' function.
 	// For MVP, let's assume the code is just a script that returns an object.
 
-	print(n.Code)
+	// print(codeToRun)
 
-	val, err := vm.RunString(n.Code)
+	val, err := vm.RunString(codeToRun)
 	if err != nil {
 		return nil, fmt.Errorf("code execution failed: %w", err)
 	}
