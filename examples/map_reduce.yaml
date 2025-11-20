@@ -1,0 +1,90 @@
+name: "Map-Reduce Word Count"
+description: "Demonstrates parallel processing using a Map-Reduce pattern."
+version: "1.0"
+
+nodes:
+  - id: "start"
+    type: "Start"
+    inputs:
+      text: "Go is an open source programming language that makes it easy to build simple, reliable, and efficient software. Concurrency is a key feature of Go. Goroutines are lightweight threads managed by the Go runtime."
+
+  - id: "splitter"
+    type: "Code"
+    inputs:
+      text: "{{ start.text }}"
+      code: |
+        // Split text into sentences for parallel processing
+        var sentences = input.text.split('.');
+        var chunks = [];
+        for (var i = 0; i < sentences.length; i++) {
+          var s = sentences[i].trim();
+          if (s.length > 0) {
+            chunks.push(s);
+          }
+        }
+        chunks;
+
+  - id: "mapper_loop"
+    type: "Loop"
+    inputs:
+      list: "{{ splitter.result }}"
+    config:
+      sub_workflow:
+        nodes:
+          - id: "count_words"
+            type: "Code"
+            inputs:
+              sentence: "{{ memory.loop_item }}"
+              code: |
+                var start = new Date().toISOString();
+                print("Starting processing: '" + input.sentence.substring(0, 15) + "...' at " + start);
+                
+                // Simulate work with random sleep (500-1500ms)
+                sleep(Math.random() * 1000 + 500);
+                
+                var words = input.sentence.split(/\s+/);
+                var count = 0;
+                for (var i = 0; i < words.length; i++) {
+                  if (words[i].length > 0) count++;
+                }
+                
+                var end = new Date().toISOString();
+                print("Finished processing: '" + input.sentence.substring(0, 15) + "...' at " + end);
+                
+                count;
+        edges: []
+
+  - id: "reducer"
+    type: "Code"
+    inputs:
+      counts: "{{ mapper_loop.results }}"
+      code: |
+        var total = 0;
+        // input.counts is an array of outputs from the sub-workflow.
+        // Each item is { "count_words": { "result": <number> } }
+        
+        for (var i = 0; i < input.counts.length; i++) {
+           var item = input.counts[i];
+           if (item && item.count_words && item.count_words.result) {
+             total += parseInt(item.count_words.result);
+           }
+        }
+        "Total Words: " + total;
+
+  - id: "final_answer"
+    type: "Answer"
+    inputs:
+      answer: "{{ reducer.result }}"
+
+edges:
+  - source: "start"
+    target: "splitter"
+  
+  - source: "splitter"
+    target: "mapper_loop"
+  
+  - source: "mapper_loop"
+    target: "reducer"
+  
+  - source: "reducer"
+    target: "final_answer"

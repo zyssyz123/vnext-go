@@ -3,6 +3,7 @@ package nodes
 import (
 	"dify-vnext-go/pkg/engine"
 	"fmt"
+	"time"
 
 	"github.com/dop251/goja"
 )
@@ -35,6 +36,14 @@ func (n *CodeNode) Execute(ctx *engine.NodeContext) (map[string]interface{}, err
 	for k, v := range ctx.Inputs {
 		vm.Set(k, v)
 	}
+
+	// Inject helper functions
+	vm.Set("sleep", func(ms int64) {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	})
+	vm.Set("print", func(msg interface{}) {
+		fmt.Printf("[%s] JS Log: %v\n", n.ID(), msg)
+	})
 
 	// Determine code to run
 	// 1. Use code from Config (n.Code)
